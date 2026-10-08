@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>סל: איך זה עובד</title>
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bellefair&family=Assistant:wght@400;600;700&display=swap">
+<style>
+/* Explanation page for the team: same paper ground, logo turquoise and Bellefair display as the app itself. */
+:root{
+  --ground:#f8f6f1; --cloth:#ffffff; --seam:#e9e0d2; --ink:#3f3630; --soft:#8a7d70;
+  --teal:#4C7476; --teal-soft:#e2ecea; --honey:#c48a3e; --rose:#c46f63; --sage:#78986f;
+  --f-display:"Bellefair","Assistant",Georgia,serif; --f-body:"Assistant","Segoe UI",Arial,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-body);font-size:18px;line-height:1.6}
+main{max-width:760px;margin:0 auto;padding-inline:20px;padding-block:28px 64px;display:grid;gap:36px}
+h1,h2,h3{font-family:var(--f-display);font-weight:400;line-height:1.05;margin:0;text-wrap:balance}
+p{margin:0}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.top img.logo{height:40px}
+.hero{display:grid;grid-template-columns:auto minmax(0,1fr);gap:20px;align-items:center}
+.hero img{width:104px;height:104px;border-radius:24px;box-shadow:0 4px 18px rgba(76,116,118,.15)}
+.hero h1{font-size:62px;color:var(--teal)}
+.hero p{font-size:20px;color:var(--soft);margin-top:6px}
+.say{background:var(--teal-soft);border-radius:18px;padding:16px 20px;font-size:20px}
+.say b{color:var(--teal)}
+section{display:grid;gap:14px}
+section > h2{font-size:38px}
+.how{list-style:none;padding:0;margin:0;display:grid;gap:10px;counter-reset:s}
+.how li{counter-increment:s;display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;align-items:start;background:var(--cloth);border-radius:16px;padding:14px 16px}
+.how li::before{content:counter(s);font-family:var(--f-display);font-size:30px;line-height:1;color:var(--teal)}
+.who{display:grid;grid-template-columns:220px minmax(0,1fr);gap:22px;align-items:start;background:var(--cloth);border-radius:22px;padding:18px}
+.who img{width:100%;border-radius:14px;border:1px solid var(--seam)}
+.who h3{font-size:34px;color:var(--teal)}
+.who .role{color:var(--soft);font-size:16px;margin-top:2px}
+.who ul{margin:10px 0 0;padding-inline-start:20px;display:grid;gap:6px}
+@media (max-width:620px){.who{grid-template-columns:1fr}.who img{max-width:280px;justify-self:center}.hero h1{font-size:50px}}
+.dots{display:flex;gap:18px;flex-wrap:wrap;font-size:16px}
+.dot{display:inline-flex;align-items:center;gap:8px}
+.dot i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.install{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.install div{background:var(--cloth);border-radius:16px;padding:14px 18px}
+.install h3{font-size:26px;margin-bottom:6px}
+.install ol{margin:0;padding-inline-start:20px;display:grid;gap:4px;font-size:17px}
+footer{color:var(--soft);font-size:15px;text-align:center}
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><img class="logo" src="logo.png" alt="MARCO KAIRI"></div>
+
+  <div class="hero">
+    <img src="icon-512.png" alt="">
+    <div><h1>סל</h1><p>המקום שבו כל המשימות של המשרד נאספות, נעשות ונסגרות.</p></div>
+  </div>
+
+  <p class="say">כשמישהו אומר <b>"שמתי לך בסל"</b>, זה אומר שמחכה לך משימה. פותחים, עושים, לוחצים <b>✓ בוצע</b>.</p>
+
+  <section>
+    <h2>איך זה עובד</h2>
+    <ol class="how">
+      <li><span>משימה נכנסת לסל: ממרקו, מדודי, מניל, משלומי, או לבד כשזו משימה קבועה (למשל כל חמישי).</span></li>
+      <li><span>היא מופיעה מיד אצל מי שצריך לעשות אותה, עם יעד ושם השולח.</span></li>
+      <li><span>עושים אותה ולוחצים <b>✓ בוצע</b>. בחלק מהמשימות יש שדות קצרים למלא קודם, למשל סכום או שם ספק.</span></li>
+      <li><span>מרקו ודודי רואים מה נסגר ומה מחכה, בלי לשאול.</span></li>
+    </ol>
+    <div class="dots">
+      <span class="dot"><i style="background:var(--rose)"></i>דחוף: באיחור או מחכה 3 ימים</span>
+      <span class="dot"><i style="background:var(--honey)"></i>להיום</span>
+      <span class="dot"><i style="background:var(--sage)"></i>בוצע</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>מי רואה מה</h2>
+    <div class="who">
+      <img src="img/nil.jpg" alt="המסך של ניל">
+      <div><h3>ניל</h3><p class="role">במחשב במשרד</p>
+        <ul>
+          <li>סל פתוח כל הזמן בצד המסך ועולה לבד כשהמחשב נדלק.</li>
+          <li>משימה חדשה מקבלת הודעה קטנה וצבע לרגע.</li>
+          <li>אחרי הישיבה של הבוקר מוסיפים כאן את המשימות מהמחברת.</li>
+          <li>אפשר לשלוח משימה לשלומי.</li>
+        </ul></div>
+    </div>
+    <div class="who">
+      <img src="img/shlomi.jpg" alt="המסך של שלומי">
+      <div><h3>שלומי</h3><p class="role">בטלפון ובטאבלט</p>
+        <ul>
+          <li>רק המשימות שלו, למשל "לאסוף צ׳ק מוכן בסניף רחובות".</li>
+          <li>לוחצים <b>✓ בוצע</b> מהשטח, והמשרד רואה מיד.</li>
+          <li>אפשר לשלוח משימה לניל, למשל להוציא חשבונית ללקוח.</li>
+          <li>אותו קישור עובד בטלפון ובטאבלט.</li>
+        </ul></div>
+    </div>
+    <div class="who">
+      <img src="img/marco.jpg" alt="המסך של מרקו ודודי">
+      <div><h3>מרקו ודודי</h3><p class="role">בטלפון</p>
+        <ul>
+          <li>שולחים משימות לניל או לשלומי, עם יעד ושדות למילוי.</li>
+          <li>מגדירים משימות קבועות: כל יום, כל שבוע או כל חודש.</li>
+          <li>רואים מה פתוח, מה תקוע ומה בוצע, כולל מה שמולא.</li>
+        </ul></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>להוסיף למסך הבית</h2>
+    <div class="install">
+      <div><h3>אייפון</h3><ol><li>פותחים את הקישור האישי ב-Safari.</li><li>כפתור השיתוף (ריבוע עם חץ).</li><li>"הוסף למסך הבית" ← "הוסף".</li></ol></div>
+      <div><h3>אנדרואיד</h3><ol><li>פותחים את הקישור האישי ב-Chrome.</li><li>⋮ בפינה למעלה.</li><li>"הוספה למסך הבית" ← "הוספה".</li></ol></div>
+    </div>
+    <p>מופיע האייקון של סל, ומשם נכנסים כמו לאפליקציה. בטאבלט של שלומי עושים את אותו הדבר עם אותו קישור.</p>
+  </section>
+
+  <footer>סל · MARCO KAIRI · כל קישור אישי פותח רק את המסך של אותו אדם</footer>
+</main>
+</body>
+</html>
