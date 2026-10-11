@@ -231,7 +231,9 @@ function shell(){
     marco: [["marco", "משימות"], ["plan", "השבוע של שלומי"], ["ai", "הסוכן", () => AI.props.length]],
     dudi: [["marco", "משימות"], ["plan", "השבוע של שלומי"], ["ai", "הסוכן", () => AI.props.length]]
   }[USER];
-  const showTabs = TABS && TABS.some(t => t[0] === view);
+  // the week planner and the agent run on sample data until their sheet tabs are built; only the preview shows them
+  if (TABS && !DEMO) for (let i = TABS.length - 1; i >= 0; i--) if (["plan", "week", "ai"].includes(TABS[i][0])) TABS.splice(i, 1);
+  const showTabs = TABS && TABS.length > 1 && TABS.some(t => t[0] === view);
   document.body.classList.toggle("has-tabs", !!showTabs);
   const tabbar = showTabs ? `<nav class="tabbar" aria-label="מסכים"><div>${TABS.map(([v, l, n]) => { const c = n ? n() : 0;
     return `<button type="button" data-view="${v}" ${v === view ? 'aria-current="page"' : ""}>${l}${c ? `<span class="badge">${c}</span>` : ""}</button>`; }).join("")}</div></nav>` : "";
