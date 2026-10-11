@@ -10,6 +10,7 @@ const DEMO = !(window.google && google.script && google.script.run);
 const VIEWS = ["widget","office","strip","marco","agent","plan","week","ai"];
 let view = VIEWS.includes(VIEW_IN) ? VIEW_IN : (DEMO ? "plan" : "office");
 let USER = NAMES[CFG.user] ? CFG.user : DEFAULT_USER[view];
+if (USER === "shlomi" && !["week", "agent"].includes(view)) view = "week";
 const brand = () => `<div class="brand"><img src="${LOGO}" alt="MARCO KAIRI"><span class="brand-name">${MARK}סל</span></div>`;
 const fromTag = t => t.by && t.by !== USER && NAMES[t.by] ? "מ" + NAMES[t.by] : "";
 let S = {tasks:[], rec:[], cal:{today:[], tomorrow:[]}, today:""};
@@ -76,7 +77,7 @@ async function run(fn, args, okMsg){
 }
 async function load(){
   if (ui.busy) return;
-  try { S = await api("api_load"); notice(); refresh(false); }
+  try { S = await api("api_load"); notice(); refresh(false); weekRefresh(); }
   catch (e) { toast("אין חיבור ללוח. מנסה שוב בעוד דקה", true); }
 }
 
@@ -229,10 +230,11 @@ function shell(){
   const TABS = {
     shlomi: [["week", "השבוע שלי"], ["agent", "משימות", () => openOf("agent").length]],
     marco: [["marco", "משימות"], ["plan", "השבוע של שלומי"], ["ai", "הסוכן", () => AI.props.length]],
-    dudi: [["marco", "משימות"], ["plan", "השבוע של שלומי"], ["ai", "הסוכן", () => AI.props.length]]
+    dudi: [["marco", "משימות"], ["plan", "השבוע של שלומי"], ["ai", "הסוכן", () => AI.props.length]],
+    nil: [["office", "משימות"], ["plan", "השבוע של שלומי"]]
   }[USER];
-  // the week planner and the agent run on sample data until their sheet tabs are built; only the preview shows them
-  if (TABS && !DEMO) for (let i = TABS.length - 1; i >= 0; i--) if (["plan", "week", "ai"].includes(TABS[i][0])) TABS.splice(i, 1);
+  // the agent tab stays preview-only until its morning run exists
+  if (TABS && !DEMO) for (let i = TABS.length - 1; i >= 0; i--) if (["ai"].includes(TABS[i][0])) TABS.splice(i, 1);
   const showTabs = TABS && TABS.length > 1 && TABS.some(t => t[0] === view);
   document.body.classList.toggle("has-tabs", !!showTabs);
   const tabbar = showTabs ? `<nav class="tabbar" aria-label="מסכים"><div>${TABS.map(([v, l, n]) => { const c = n ? n() : 0;
@@ -469,78 +471,95 @@ function demoApi(fn, a){
   return JSON.parse(JSON.stringify({tasks: demo.tasks, rec: demo.rec, cal: demo.cal, today: demo.today}));
 }
 
-/* ---------- Shlomi's week (preview with sample data; saving to the sheet comes with the build) ---------- */
+/* ---------- Shlomi's week: stored in the sheet (tab "נתונים"), one row per week and one per stop ---------- */
 const KINDS = {meet: "פגישה", collect: "גבייה", pickup: "איסוף", deliver: "מסירה"};
 const AREAS = ["צפון", "חיפה והקריות", "שרון", "מרכז", "שפלה", "ירושלים", "דרום", "משרד"];
 const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי"];
-const R = {day: 0, open: null, thread: null, kind: ["meet","meet","meet","meet","meet"], sum: {}, skind: "meet"};
-let WEEK = null, sid = 100;
-function weekInit(){
-  const t = new Date(today() + "T12:00:00Z"), sun = addDays(today(), -t.getUTCDay());
-  const st = (type, client, extra) => Object.assign({id: "s" + (sid++), type, client, note: "", debt: "", status: "planned", thread: []}, extra || {});
-  WEEK = {start: sun, sent: false, days: [
-    {area: "צפון", stops: [
-      st("meet", "גלריה מקסיקנית", {note: "להציג את קולקציית החורף", status: "done", result: {text: "אהבו את השטיחים הקלועים, ביקשו דוגמאות של כריות", order: true, amount: "8,500"},
-        thread: [{by: "marco", text: "תזכיר להם שהמשלוח הבא מגיע בנובמבר", at: "08:12"}, {by: "shlomi", text: "סגור, אמרתי להם", at: "11:40"}]}),
-      st("meet", "ענן עיצוב", {status: "done", result: {text: "רוצים לחשוב, לחזור אליהם בעוד שבועיים", order: false}}),
-      st("meet", "בית ונוף, כרמיאל", {debt: "חוב פתוח 12,400 ₪ · 75 יום"}),
-      st("collect", "רהיטי הגליל", {note: "צ'ק על 6,800 ₪ מחכה אצל אורית"}),
-      st("meet", "סטודיו זית, ראש פינה"),
-      st("deliver", "אורנים", {note: "דוגמאות בדים שהבטחנו"})]},
-    {area: "שפלה", stops: [st("meet", "פרחי הבית, רחובות"), st("collect", "לבן ועץ, נס ציונה", {note: "3,200 ₪"}), st("meet", "קאזה, גדרה"), st("meet", "נוי לבית, יבנה")]},
-    {area: "משרד", stops: [st("pickup", "מחסן", {note: "לאסוף קטלוגים חדשים ודוגמאות"})]},
-    {area: "שרון", stops: [st("meet", "מעצבת דנה ל., הרצליה"), st("meet", "בית קטן, רעננה", {debt: "חוב פתוח 4,100 ₪ · 62 יום"}), st("meet", "דקו פלוס, נתניה")]},
-    {area: "", stops: []}],
-    tray: [{id: "t1", type: "meet", client: "אוסף, כפר סבא", note: "לא הספיק בשבוע שעבר"}]};
-  const d = t.getUTCDay(); R.day = d <= 4 ? d : 0;
+const STORE = {weeks: {}, stops: {}, loaded: false, loading: null};
+const R = {week: "", day: 0, open: null, thread: null, kind: ["meet","meet","meet","meet","meet"], sum: {}, skind: "meet"};
+const weekOf = iso => { const d = new Date(iso + "T12:00:00Z"); return addDays(iso, -d.getUTCDay()); };
+const defaultWeek = () => { const dow = new Date(today() + "T12:00:00Z").getUTCDay(); return dow >= 5 ? addDays(weekOf(today()), 7) : weekOf(today()); };
+const newId = () => "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+function sapi(fn, ...args){
+  if (DEMO) return Promise.resolve(demoStore(fn, args));
+  return new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn](KEY, ...args));
 }
-const dayDate = i => shortDate(addDays(WEEK.start, i));
-const stopCount = () => WEEK.days.reduce((n, d) => n + d.stops.length, 0);
+async function loadWeekData(){
+  if (STORE.loading) return STORE.loading;
+  STORE.loading = Promise.all([sapi("api_store_list", "weeks"), sapi("api_store_list", "stops")]).then(([w, s]) => {
+    STORE.weeks = Object.fromEntries(w.map(x => [x.id, x.data]));
+    STORE.stops = Object.fromEntries(s.map(x => [x.id, Object.assign({}, x.data, {id: x.id})]));
+    STORE.loaded = true; STORE.loading = null;
+  }).catch(e => { STORE.loading = null; toast("השבוע לא נטען. בודק שוב בעוד רגע", true); throw e; });
+  return STORE.loading;
+}
+function saveStop(s){
+  STORE.stops[s.id] = s; const data = Object.assign({}, s); delete data.id;
+  sapi("api_store_put", "stops", s.id, data, USER).catch(() => toast("השינוי לא נשמר. בדקו את החיבור ונסו שוב", true));
+}
+function delStop(id){ delete STORE.stops[id]; sapi("api_store_del", "stops", id).catch(() => toast("המחיקה לא נשמרה", true)); }
+function weekDoc(w){ return STORE.weeks[w] || (STORE.weeks[w] = {areas: ["", "", "", "", ""], sent: false}); }
+function saveWeek(w){ sapi("api_store_put", "weeks", w, weekDoc(w), USER).catch(() => toast("השינוי לא נשמר", true)); }
+const stopsOf = (w, d) => Object.values(STORE.stops).filter(s => s.week === w && s.day === d).sort((a, b) => (a.order || 0) - (b.order || 0));
+const weekStops = w => Object.values(STORE.stops).filter(s => s.week === w);
+const trayStops = w => Object.values(STORE.stops).filter(s => s.week < w && s.week >= addDays(w, -28) && s.status !== "done").sort((a, b) => a.week.localeCompare(b.week));
+const dayDate = i => shortDate(addDays(R.week, i));
 function kindTag(k){ return `<span class="kind k-${k}">${KINDS[k]}</span>`; }
 function resultLine(s){
   if (!s.result) return "";
   if (s.type === "collect") return s.result.got ? `נאסף ${esc(s.result.amount || "")} ₪` : "לא נאסף";
   return s.result.order ? `הזמנה ${esc(s.result.amount || "")} ₪` : "בלי הזמנה";
 }
+function weekShell(render){
+  if (!R.week) R.week = defaultWeek();
+  if (STORE.loaded) return render();
+  const el = $(view === "plan" ? "#pl" : "#wk"); if (el) el.innerHTML = `${brand()}<p class="empty">טוען את השבוע…</p>`;
+  loadWeekData().then(render).catch(() => {});
+}
+const weekNav = () => `<div class="chips"><button type="button" class="chip" data-wk="-7">שבוע קודם</button>
+  <button type="button" class="chip" data-wk="0" aria-pressed="${R.week === defaultWeek()}">השבוע</button><button type="button" class="chip" data-wk="7">שבוע הבא</button></div>`;
 
 /* planning screen */
 function renderPlan(){
-  if (!WEEK) weekInit();
-  const end = shortDate(addDays(WEEK.start, 4));
+  if (!STORE.loaded) return weekShell(renderPlan);
+  const wd = weekDoc(R.week), all = weekStops(R.week), tray = trayStops(R.week);
   let h = `${brand()}
-    <header class="o-head"><div><h1>השבוע של שלומי</h1><div class="pl-sub">שבוע ${dayDate(0)} עד ${end}. בוחרים אזור לכל יום, מקלידים לקוחות, ושולחים לשלומי.</div></div>
-      <div class="counts">${counts([[stopCount(), "תחנות"], [WEEK.days.reduce((n, d) => n + d.stops.filter(s => s.status === "done").length, 0), "בוצעו", "done"]])}</div></header>`;
-  if (WEEK.tray.length) h += `<section class="tray"><h2>לא בוצעו בשבוע שעבר</h2>${WEEK.tray.map(t => `<div class="tray-item"><span>${kindTag(t.type)}<b>${esc(t.client)}</b></span>
-      <span class="chips">${DAY_NAMES.map((n, i) => `<button type="button" class="chip" data-tray="${t.id}|${i}">${n}</button>`).join("")}</span></div>`).join("")}</section>`;
-  h += `<div class="days">${WEEK.days.map((d, i) => `<section class="day">
-      <div class="day-h"><h2>${DAY_NAMES[i]}</h2><span class="dt">${dayDate(i)}</span></div>
-      <select class="area" data-areasel="${i}" id="area-${i}" aria-label="אזור ל${DAY_NAMES[i]}"><option value="">בחירת אזור</option>${AREAS.map(a => `<option ${d.area === a ? "selected" : ""}>${a}</option>`).join("")}</select>
-      ${d.stops.length ? `<ol class="stops">${d.stops.map((s, j) => `<li class="stop ${s.status === "done" ? "done" : s.status === "missed" ? "missed" : ""}">
-          <span>${kindTag(s.type)}<b>${esc(s.client)}</b>${s.self ? `<span class="self">הוסיף שלומי</span>` : ""}${s.note ? `<span class="sm">${esc(s.note)}</span>` : ""}${s.debt ? `<span class="debt">${esc(s.debt)}</span>` : ""}
-          ${s.result ? `<span class="res">✓ ${resultLine(s)}${s.result.text ? ": " + esc(s.result.text) : ""}</span>` : ""}</span>
-          <span class="stop-acts">${j ? `<button class="icon-btn" data-up="${i}|${j}" aria-label="להקדים">↑</button>` : ""}<button class="icon-btn" data-del-stop="${i}|${j}" aria-label="להסיר">✕</button></span></li>`).join("")}</ol>`
-        : `<p class="empty-day">${d.area ? "עדיין אין תחנות" : "יום פנוי"}</p>`}
+    <header class="o-head"><div><h1>השבוע של שלומי</h1><div class="pl-sub">שבוע ${dayDate(0)} עד ${dayDate(4)}. בוחרים אזור לכל יום, מקלידים לקוחות, ושלומי רואה מיד.</div></div>
+      <div class="counts">${counts([[all.length, "תחנות"], [all.filter(s => s.status === "done").length, "בוצעו", "done"]])}</div></header>
+    ${weekNav()}`;
+  if (tray.length) h += `<section class="tray"><h2>לא בוצעו בשבועות הקודמים</h2>${tray.map(t => `<div class="tray-item"><span>${kindTag(t.type)}<b>${esc(t.client)}</b> <span class="small soft">${shortDate(addDays(t.week, t.day))}</span></span>
+      <span class="chips">${DAY_NAMES.map((n, i) => `<button type="button" class="chip" data-tray="${t.id}|${i}">${n}</button>`).join("")}<button type="button" class="chip" data-tray-drop="${t.id}">לוותר</button></span></div>`).join("")}</section>`;
+  h += `<div class="days">${DAY_NAMES.map((name, i) => { const st = stopsOf(R.week, i); return `<section class="day">
+      <div class="day-h"><h2>${name}</h2><span class="dt">${dayDate(i)}</span></div>
+      <select class="area" data-areasel="${i}" id="area-${i}" aria-label="אזור ל${name}"><option value="">בחירת אזור</option>${AREAS.map(a => `<option ${wd.areas[i] === a ? "selected" : ""}>${a}</option>`).join("")}</select>
+      ${st.length ? `<ol class="stops">${st.map((s, j) => `<li class="stop ${s.status === "done" ? "done" : s.status === "missed" ? "missed" : ""}">
+          <span>${kindTag(s.type)}<b>${esc(s.client)}</b>${s.self ? `<span class="self">הוסיף שלומי</span>` : ""}${s.note ? `<span class="sm">${esc(s.note)}</span>` : ""}
+          ${s.result ? `<span class="res">✓ ${resultLine(s)}${s.result.text ? ": " + esc(s.result.text) : ""}</span>` : ""}${s.status === "missed" ? `<span class="sm">לא הגיע</span>` : ""}
+          ${(s.thread || []).length ? `<span class="sm">הודעות: ${s.thread.length}</span>` : ""}</span>
+          <span class="stop-acts">${j ? `<button class="icon-btn" data-up="${s.id}" aria-label="להקדים">↑</button>` : ""}<button class="icon-btn" data-del-stop="${s.id}" aria-label="להסיר">✕</button></span></li>`).join("")}</ol>`
+        : `<p class="empty-day">${wd.areas[i] ? "עדיין אין תחנות" : "יום פנוי"}</p>`}
       <form class="add-stop" data-addstop="${i}" autocomplete="off">
         <div class="chips">${Object.entries(KINDS).map(([k, l]) => `<button type="button" class="chip" data-kind="${i}|${k}" aria-pressed="${R.kind[i] === k}">${l}</button>`).join("")}</div>
-        <div class="row"><input id="add-${i}" placeholder="לקוח (כמה? עם פסיק)" aria-label="תחנה חדשה ל${DAY_NAMES[i]}"><button class="btn pri" type="submit">הוספה</button></div>
-      </form></section>`).join("")}</div>`;
-  h += `<div class="sendrow"><span>${WEEK.sent ? "השבוע נשלח. כל שינוי מתעדכן אצלו מיד." : `${stopCount()} תחנות ב-${WEEK.days.filter(d => d.stops.length).length} ימים`}</span><button class="btn pri" data-sendweek>${WEEK.sent ? "נשלח ✓" : "שליחת השבוע לשלומי"}</button></div>`;
+        <div class="row"><input id="add-${i}" placeholder="לקוח (כמה? עם פסיק)" aria-label="תחנה חדשה ל${name}"><button class="btn pri" type="submit">הוספה</button></div>
+      </form></section>`; }).join("")}</div>
+    <div class="sendrow"><span>${all.length} תחנות ב-${DAY_NAMES.filter((_, i) => stopsOf(R.week, i).length).length} ימים${wd.sent ? " · שלומי קיבל הודעה" : ""}</span><button class="btn pri" data-sendweek>${wd.sent ? "לשלוח לו שוב תזכורת" : "להודיע לשלומי שהשבוע מוכן"}</button></div>`;
   $("#pl").innerHTML = h;
 }
 
 /* Shlomi's field view */
 function renderWeek(){
-  if (!WEEK) weekInit();
-  const d = WEEK.days[R.day], done = d.stops.filter(s => s.status !== "planned").length;
-  const isToday = addDays(WEEK.start, R.day) === today();
+  if (!STORE.loaded) return weekShell(renderWeek);
+  const wd = weekDoc(R.week), st = stopsOf(R.week, R.day), done = st.filter(s => s.status !== "planned").length;
+  const isToday = addDays(R.week, R.day) === today();
   let h = `${brand()}
     <header><h1>השבוע שלי</h1><div class="pl-sub">שבוע ${dayDate(0)} עד ${dayDate(4)}</div></header>
-    <div class="strip-days">${WEEK.days.map((x, i) => `<button type="button" class="dpill" data-wday="${i}" aria-pressed="${R.day === i}">
-      <b>${DAY_NAMES[i]}</b><span>${esc(x.area || "פנוי")}${x.stops.length ? " · " + x.stops.length : ""}</span></button>`).join("")}</div>
-    <div class="today-h"><h2>${isToday ? "היום" : DAY_NAMES[R.day]}: <em>${esc(d.area || "יום פנוי")}</em></h2><span class="pl-sub">${done} מתוך ${d.stops.length}</span></div>
-    <div class="prog"><i style="width:${d.stops.length ? Math.round(done / d.stops.length * 100) : 0}%"></i></div>`;
-  h += d.stops.length ? d.stops.map((s, j) => fieldStop(s, j)).join("") : `<p class="empty">אין תחנות ביום הזה.</p>`;
-  h += `<form class="selfadd" data-selfstop autocomplete="off"><span class="lbl">עברת במקום שלא היה בתכנון? מוסיפים אותו כאן</span>
+    ${weekNav()}
+    <div class="strip-days">${DAY_NAMES.map((n, i) => { const c = stopsOf(R.week, i).length; return `<button type="button" class="dpill" data-wday="${i}" aria-pressed="${R.day === i}">
+      <b>${n}</b><span>${esc(wd.areas[i] || "פנוי")}${c ? " · " + c : ""}</span></button>`; }).join("")}</div>
+    <div class="today-h"><h2>${isToday ? "היום" : DAY_NAMES[R.day]}: <em>${esc(wd.areas[R.day] || "יום פנוי")}</em></h2><span class="pl-sub">${done} מתוך ${st.length}</span></div>
+    <div class="prog"><i style="width:${st.length ? Math.round(done / st.length * 100) : 0}%"></i></div>`;
+  h += st.length ? st.map((s, j) => fieldStop(s, j)).join("") : `<p class="empty">אין תחנות ביום הזה.</p>`;
+  h += `<form class="selfadd" data-selfstop autocomplete="off"><span class="lbl">יצאת ממקום שלא היה בתכנון? מוסיפים אותו כאן וממלאים סיכום</span>
     <div class="chips">${Object.entries(KINDS).map(([k, l]) => `<button type="button" class="chip" data-skind="${k}" aria-pressed="${R.skind === k}">${l}</button>`).join("")}</div>
     <div class="row"><input id="self-add" placeholder="שם הלקוח" aria-label="תחנה שהוספת"><button class="btn pri" type="submit">הוספה</button></div></form>`;
   $("#wk").innerHTML = h;
@@ -550,69 +569,114 @@ function fieldStop(s, j){
   let body = "";
   if (st === "done" && s.result){
     body = `<div class="result"><span><b>${s.type === "collect" ? "גבייה" : "סוכם"}:</b> ${s.result.text ? esc(s.result.text) : resultLine(s)}</span>
-      ${s.type !== "collect" ? `<span><b>הזמנה:</b> ${resultLine(s)}</span>` : ""}
-      ${s.result.order ? `<span class="follow">מעקב אוטומטי ב-${shortDate(addDays(today(), 7))}: לבדוק עם ניל מצב ההזמנה</span>` : ""}</div>`;
+      ${s.type === "meet" ? `<span><b>הזמנה:</b> ${resultLine(s)}</span>` : ""}
+      ${s.result.order ? `<span class="follow">נפתח מעקב לשבוע הבא: לבדוק עם ניל מצב ההזמנה</span>` : ""}</div>`;
   } else if (st === "missed"){
-    body = `<p class="note">לא הגעת. חוזר לתכנון של השבוע הבא.</p>`;
+    body = `<p class="note">לא הגעת. התחנה תחכה לתכנון של השבוע הבא.</p><div class="fstop-acts"><button class="btn ghost" data-unmiss="${s.id}">בכל זאת הייתי</button></div>`;
   } else if (R.open === s.id){
     const f = R.sum[s.id] || {};
-    body = s.type === "collect"
-      ? `<div class="sumform"><span class="lbl">הצ'ק נאסף?</span><div class="chips"><button type="button" class="chip" data-yn="${s.id}|got|1" aria-pressed="${f.got === true}">כן</button><button type="button" class="chip" data-yn="${s.id}|got|0" aria-pressed="${f.got === false}">לא</button></div>
+    const yn = (k, q) => `<span class="lbl">${q}</span><div class="chips"><button type="button" class="chip" data-yn="${s.id}|${k}|1" aria-pressed="${f[k] === true}">כן</button><button type="button" class="chip" data-yn="${s.id}|${k}|0" aria-pressed="${f[k] === false}">לא</button></div>`;
+    if (s.type === "collect") body = `<div class="sumform">${yn("got", "הצ'ק נאסף?")}
          ${f.got ? `<label><span class="lbl">סכום (₪)</span><input id="amt-${s.id}" inputmode="numeric" value="${esc(f.amount || "")}"></label>` : ""}
          <label><span class="lbl">הערה</span><input id="txt-${s.id}" value="${esc(f.text || "")}"></label>
-         <div class="fstop-acts"><button class="btn pri" data-savestop="${s.id}" ${f.got === undefined ? "disabled" : ""}>שמירה</button><button class="btn ghost" data-closestop>ביטול</button></div></div>`
-      : `<div class="sumform"><label><span class="lbl">מה סוכם?</span><textarea id="txt-${s.id}">${esc(f.text || "")}</textarea></label>
-         <span class="lbl">הייתה הזמנה?</span><div class="chips"><button type="button" class="chip" data-yn="${s.id}|order|1" aria-pressed="${f.order === true}">כן</button><button type="button" class="chip" data-yn="${s.id}|order|0" aria-pressed="${f.order === false}">לא</button></div>
+         <div class="fstop-acts"><button class="btn pri" data-savestop="${s.id}" ${f.got === undefined ? "disabled" : ""}>שמירה</button><button class="btn ghost" data-closestop>ביטול</button></div></div>`;
+    else if (s.type === "meet") body = `<div class="sumform"><label><span class="lbl">מה סוכם?</span><textarea id="txt-${s.id}">${esc(f.text || "")}</textarea></label>
+         ${yn("order", "הייתה הזמנה?")}
          ${f.order ? `<label><span class="lbl">סכום ההזמנה (₪)</span><input id="amt-${s.id}" inputmode="numeric" value="${esc(f.amount || "")}"></label>` : ""}
          <div class="fstop-acts"><button class="btn pri" data-savestop="${s.id}" ${f.order === undefined ? "disabled" : ""}>שמירת הסיכום</button><button class="btn ghost" data-closestop>ביטול</button></div></div>`;
+    else body = `<div class="sumform"><label><span class="lbl">הערה (לא חובה)</span><input id="txt-${s.id}" value="${esc(f.text || "")}"></label>
+         <div class="fstop-acts"><button class="btn pri" data-savestop="${s.id}">בוצע</button><button class="btn ghost" data-closestop>ביטול</button></div></div>`;
   } else {
     body = `<div class="fstop-acts"><button class="btn pri" data-openstop="${s.id}">הייתי</button><button class="btn ghost" data-missstop="${s.id}">לא הגעתי</button></div>`;
   }
-  const msgs = s.thread.length;
-  const thread = R.thread === s.id ? `<div class="thread">${s.thread.map(m => `<div class="msg ${m.by === USER ? "mine" : ""}"><small>${NAMES[m.by]} · ${m.at}</small>${esc(m.text)}</div>`).join("") || `<p class="note">עוד אין הודעות. מה שנכתב כאן נשמר ליד התחנה.</p>`}
-      <form data-msg="${s.id}" autocomplete="off"><input id="msg-${s.id}" placeholder="הודעה למשרד" aria-label="הודעה"><button class="btn pri" type="submit">שליחה</button></form></div>` : "";
+  const th = s.thread || [], msgs = th.length;
+  const thread = R.thread === s.id ? `<div class="thread">${th.map(m => `<div class="msg ${m.by === USER ? "mine" : ""}"><small>${NAMES[m.by] || ""} · ${esc(m.at)}</small>${esc(m.text)}</div>`).join("") || `<p class="note">עוד אין הודעות. מה שנכתב כאן נשמר ליד התחנה.</p>`}
+      <form data-msg="${s.id}" autocomplete="off"><input id="msg-${s.id}" placeholder="${USER === "shlomi" ? "הודעה למשרד" : "הודעה לשלומי"}" aria-label="הודעה"><button class="btn pri" type="submit">שליחה</button></form></div>` : "";
   return `<article class="fstop ${st}"><div class="fstop-top"><span class="num">${st === "done" ? "✓" : st === "missed" ? "–" : j + 1}</span>
-    <div><h3>${kindTag(s.type)}${esc(s.client)}${s.self ? `<span class="self">הוספת</span>` : ""}</h3>${s.note ? `<div class="note">${esc(s.note)}</div>` : ""}${s.debt ? `<span class="debt">${esc(s.debt)}</span>` : ""}</div></div>
+    <div><h3>${kindTag(s.type)}${esc(s.client)}${s.self ? `<span class="self">הוספת</span>` : ""}</h3>${s.note ? `<div class="note">${esc(s.note)}</div>` : ""}</div></div>
     ${body}<div><button class="link-btn" data-thread="${s.id}">${R.thread === s.id ? "סגירת ההודעות" : msgs ? `הודעות (${msgs})` : "הודעה למשרד"}</button></div>${thread}</article>`;
 }
-function findStop(id){ for (const d of WEEK.days){ const s = d.stops.find(x => x.id === id); if (s) return s; } }
+const rerender = () => view === "plan" ? renderPlan() : renderWeek();
 function keepSum(id){ const t = $("#txt-" + id), a = $("#amt-" + id); R.sum[id] = Object.assign(R.sum[id] || {}, t ? {text: t.value} : {}, a ? {amount: a.value} : {}); }
+function addStops(day, names, kind, extra){
+  const last = stopsOf(R.week, day).reduce((m, s) => Math.max(m, s.order || 0), 0);
+  return names.map((n, i) => { const s = Object.assign({id: newId(), week: R.week, day, order: last + i + 1, type: kind, client: n, note: "", status: "planned", thread: [], by: USER}, extra || {}); saveStop(s); return s; });
+}
 document.addEventListener("click", e => {
-  const b = e.target.closest("button"); if (!b || !WEEK) return;
+  const b = e.target.closest("button"); if (!b || !["plan", "week"].includes(view)) return;
   const d = b.dataset, pair = v => v.split("|");
-  if (d.area){ const [i, a] = pair(d.area); WEEK.days[i].area = WEEK.days[i].area === a ? "" : a; renderPlan(); }
+  if (d.wk !== undefined){ R.week = d.wk === "0" ? defaultWeek() : addDays(R.week, +d.wk); R.open = null; rerender(); }
   if (d.kind){ const [i, k] = pair(d.kind); R.kind[i] = k; b.parentElement.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", c === b)); }
-  if (d.up){ const [i, j] = pair(d.up).map(Number), st = WEEK.days[i].stops; [st[j - 1], st[j]] = [st[j], st[j - 1]]; renderPlan(); }
-  if (d.delStop){ const [i, j] = pair(d.delStop).map(Number); WEEK.days[i].stops.splice(j, 1); renderPlan(); }
-  if (d.tray){ const [id, i] = pair(d.tray), t = WEEK.tray.find(x => x.id === id);
-    WEEK.days[i].stops.push({id: "s" + (sid++), type: t.type, client: t.client, note: "", debt: "", status: "planned", thread: []});
-    WEEK.tray = WEEK.tray.filter(x => x.id !== id); renderPlan(); toast("שובץ ליום " + DAY_NAMES[i]); }
-  if (b.hasAttribute("data-sendweek")){ WEEK.sent = true; renderPlan(); toast("השבוע נשלח לשלומי"); }
+  if (d.up){ const s = STORE.stops[d.up], list = stopsOf(s.week, s.day), j = list.indexOf(s), p = list[j - 1];
+    if (p){ const o = s.order; s.order = p.order; p.order = o; if (s.order === p.order) s.order--; saveStop(s); saveStop(p); renderPlan(); } }
+  if (d.delStop){ delStop(d.delStop); renderPlan(); }
+  if (d.tray){ const [id, i] = pair(d.tray), s = STORE.stops[id], last = stopsOf(R.week, +i).reduce((m, x) => Math.max(m, x.order || 0), 0);
+    Object.assign(s, {week: R.week, day: +i, order: last + 1, status: "planned"}); saveStop(s); renderPlan(); toast("שובץ ליום " + DAY_NAMES[i]); }
+  if (d.trayDrop){ const s = STORE.stops[d.trayDrop]; s.status = "done"; s.result = {text: "ויתרנו", skipped: true}; saveStop(s); renderPlan(); }
+  if (b.hasAttribute("data-sendweek")){ const wd = weekDoc(R.week); wd.sent = true; saveWeek(R.week);
+    run("api_add", [{title: `השבוע שלך (${dayDate(0)}) מוכן בסל: ${weekStops(R.week).length} תחנות`, who: "agent", due: R.week, fields: [], by: USER}], "שלומי קיבל משימה להסתכל על השבוע"); }
   if (d.wday){ R.day = +d.wday; R.open = null; renderWeek(); }
   if (d.skind){ R.skind = d.skind; b.parentElement.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", c === b)); }
   if (d.openstop){ R.open = d.openstop; renderWeek(); }
   if (b.hasAttribute("data-closestop")){ R.open = null; renderWeek(); }
   if (d.yn){ const [id, k, v] = pair(d.yn); keepSum(id); R.sum[id][k] = v === "1"; renderWeek(); }
-  if (d.savestop){ const id = d.savestop, s = findStop(id); keepSum(id); s.result = R.sum[id]; s.status = "done"; R.open = null; renderWeek();
-    toast(s.result.order ? "נשמר. נקבע מעקב בעוד שבוע" : "נשמר"); }
-  if (d.missstop){ findStop(d.missstop).status = "missed"; renderWeek(); toast("חוזר לתכנון של השבוע הבא"); }
+  if (d.savestop){ const id = d.savestop, s = STORE.stops[id]; keepSum(id); s.result = Object.assign({}, R.sum[id]); s.status = "done"; s.doneAt = new Date().toISOString(); saveStop(s); R.open = null; renderWeek();
+    if (s.type === "meet" && s.result.order){
+      const amt = s.result.amount ? ` (${s.result.amount} ₪)` : "";
+      api("api_add", {title: `מעקב הזמנה: ${s.client}${amt}. לבדוק עם ניל מה המצב`, who: "agent", due: addDays(today(), 7), fields: [], by: USER});
+      api("api_add", {title: `הזמנה חדשה מ${s.client}${amt}: לעדכן את שלומי מתי יוצאת`, who: "office", due: addDays(today(), 3), fields: ["מתי יוצאת"], by: USER});
+      toast("נשמר. נפתח מעקב לשבוע הבא, וניל קיבלה משימה");
+    } else toast("נשמר"); }
+  if (d.missstop){ const s = STORE.stops[d.missstop]; s.status = "missed"; saveStop(s); renderWeek(); toast("נשאר לתכנון של השבוע הבא"); }
+  if (d.unmiss){ const s = STORE.stops[d.unmiss]; s.status = "planned"; saveStop(s); R.open = s.id; renderWeek(); }
   if (d.thread){ R.thread = R.thread === d.thread ? null : d.thread; renderWeek(); const m = $("#msg-" + d.thread); if (m) m.focus(); }
 });
-document.addEventListener("change", e => { const i = e.target.dataset && e.target.dataset.areasel; if (i !== undefined && WEEK){ WEEK.days[i].area = e.target.value; renderPlan(); } });
-document.addEventListener("input", e => { const id = (e.target.id || "").replace(/^(txt|amt)-/, ""); if (id !== e.target.id && R.sum) keepSum(id); });
+document.addEventListener("change", e => { const i = e.target.dataset && e.target.dataset.areasel; if (i !== undefined && view === "plan"){ weekDoc(R.week).areas[+i] = e.target.value; saveWeek(R.week); } });
+document.addEventListener("input", e => { const id = (e.target.id || "").replace(/^(txt|amt)-/, ""); if (id !== e.target.id && view === "week") keepSum(id); });
 document.addEventListener("submit", e => {
-  const f = e.target;
+  const f = e.target; if (!["plan", "week"].includes(view)) return;
   if (f.dataset.addstop !== undefined){ e.preventDefault(); const i = +f.dataset.addstop, inp = $("#add-" + i);
     const names = inp.value.split(/[,\n]/).map(x => x.trim()).filter(Boolean); if (!names.length) return;
-    names.forEach(n => WEEK.days[i].stops.push({id: "s" + (sid++), type: R.kind[i], client: n, note: "", debt: "", status: "planned", thread: []}));
-    renderPlan(); const again = $("#add-" + i); if (again) again.focus(); }
+    addStops(i, names, R.kind[i]); renderPlan(); const again = $("#add-" + i); if (again) again.focus(); }
   if (f.dataset.selfstop !== undefined){ e.preventDefault(); const inp = $("#self-add"), n = inp.value.trim(); if (!n) return;
-    const st = {id: "s" + (sid++), type: R.skind, client: n, note: "", debt: "", status: "planned", thread: [], self: true};
-    WEEK.days[R.day].stops.push(st); R.open = st.id; renderWeek(); toast("נוסף ליום. אפשר למלא סיכום"); }
-  if (f.dataset.msg){ e.preventDefault(); const id = f.dataset.msg, inp = $("#msg-" + id); if (!inp.value.trim()) return;
-    findStop(id).thread.push({by: USER, text: inp.value.trim(), at: new Date().toLocaleTimeString("he-IL", {hour: "2-digit", minute: "2-digit", timeZone: TZ})});
+    const [s] = addStops(R.day, [n], R.skind, {self: true}); R.open = s.id; renderWeek(); toast("נוסף ליום. ממלאים סיכום"); }
+  if (f.dataset.msg){ e.preventDefault(); const id = f.dataset.msg, inp = $("#msg-" + id), text = inp.value.trim(); if (!text) return;
+    const m = {by: USER, text, at: new Date().toLocaleString("he-IL", {day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit", timeZone: TZ})};
+    const s = STORE.stops[id]; s.thread = (s.thread || []).concat([m]);
+    sapi("api_store_push", "stops", id, "thread", m).catch(() => toast("ההודעה לא נשלחה", true));
     renderWeek(); const again = $("#msg-" + id); if (again) again.focus(); }
 }, true);
+/* keep the week fresh while someone else edits it, without disturbing a form in progress */
+function weekRefresh(){
+  if (!["plan", "week"].includes(view) || !STORE.loaded || R.open) return;
+  const a = document.activeElement; if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return;
+  STORE.loaded = false; loadWeekData().then(rerender).catch(() => {});
+}
+
+/* preview store (only in the preview) */
+let demoStoreData = null;
+function demoStore(fn, a){
+  if (!demoStoreData){
+    const w = defaultWeek(), wk = {}, st = {}; let o = 0;
+    wk[w] = {areas: ["צפון", "שפלה", "משרד", "שרון", ""], sent: false};
+    const add = (day, type, client, extra) => { const id = "x" + (++o); st[id] = Object.assign({week: w, day, order: o, type, client, note: "", status: "planned", thread: [], by: "marco"}, extra || {}); };
+    add(0, "meet", "גלריה מקסיקנית", {note: "להציג את קולקציית החורף", status: "done", result: {text: "אהבו את השטיחים הקלועים, ביקשו דוגמאות של כריות", order: true, amount: "8,500"},
+      thread: [{by: "marco", text: "תזכיר להם שהמשלוח הבא מגיע בנובמבר", at: "08:12"}, {by: "shlomi", text: "סגור, אמרתי להם", at: "11:40"}]});
+    add(0, "meet", "ענן עיצוב", {status: "done", result: {text: "רוצים לחשוב, לחזור אליהם בעוד שבועיים", order: false}});
+    add(0, "meet", "בית ונוף, כרמיאל"); add(0, "collect", "רהיטי הגליל", {note: "צ'ק על 6,800 ₪ מחכה אצל אורית"});
+    add(0, "meet", "סטודיו זית, ראש פינה"); add(0, "deliver", "אורנים", {note: "דוגמאות בדים שהבטחנו"});
+    add(1, "meet", "פרחי הבית, רחובות"); add(1, "collect", "לבן ועץ, נס ציונה", {note: "3,200 ₪"}); add(1, "meet", "קאזה, גדרה"); add(1, "meet", "נוי לבית, יבנה");
+    add(2, "pickup", "מחסן", {note: "לאסוף קטלוגים חדשים ודוגמאות"});
+    add(3, "meet", "מעצבת דנה ל., הרצליה"); add(3, "meet", "בית קטן, רעננה"); add(3, "meet", "דקו פלוס, נתניה");
+    st.old = {week: addDays(w, -7), day: 2, order: 1, type: "meet", client: "אוסף, כפר סבא", note: "", status: "missed", thread: [], by: "marco"};
+    demoStoreData = {weeks: wk, stops: st};
+  }
+  const [coll, id, data] = a, c = demoStoreData[coll] || (demoStoreData[coll] = {});
+  if (fn === "api_store_list") return Object.entries(c).map(([k, v]) => ({id: k, data: JSON.parse(JSON.stringify(v))}));
+  if (fn === "api_store_put"){ c[id] = JSON.parse(JSON.stringify(data)); return {id, data}; }
+  if (fn === "api_store_del"){ delete c[id]; return true; }
+  if (fn === "api_store_push"){ const doc = c[id]; doc[data] = (doc[data] || []).concat([a[3]]); return {id, data: doc}; }
+}
 
 /* ---------- the agent (preview: sample summary, insights, proposals and answers) ---------- */
 const AI = {asked: null, props: [
