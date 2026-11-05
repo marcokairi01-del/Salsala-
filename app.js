@@ -7,7 +7,7 @@ const NAMES = {nil: "ניל", shlomi: "שלומי", marco: "מרקו", dudi: "ד
 const TO = {office: "ניל", agent: "שלומי", marco: "מרקו", dudi: "דודי", tom: "תום", roni: "רוני"};
 // מרקו and דודי can send to everyone (but not to themselves)
 const ALL = ["office", "agent", "marco", "dudi", "tom", "roni"];
-const SENDS = {marco: ALL.filter(w => w !== "marco"), dudi: ALL.filter(w => w !== "dudi"), nil: ["office", "agent"], shlomi: ["office"]};
+const SENDS = {marco: ["marco", ...ALL.filter(w => w !== "marco")], dudi: ["dudi", ...ALL.filter(w => w !== "dudi")], nil: ["office", "agent"], shlomi: ["office"]};
 const STORE_WHO = ["marco", "dudi", "tom", "roni"];
 const isStoreWho = w => STORE_WHO.includes(w);
 const DEFAULT_USER = {office: "nil", widget: "nil", strip: "nil", agent: "shlomi", marco: "marco", plan: "marco", week: "shlomi", ai: "marco", inbox: "tom"};
@@ -22,7 +22,7 @@ const brand = () => `<div class="brand"><img src="${LOGO}" alt="MARCO KAIRI"><sp
 const fromTag = t => t.by && t.by !== USER && NAMES[t.by] ? "מ" + NAMES[t.by] : "";
 let S = {tasks:[], rec:[], cal:{today:[], tomorrow:[]}, today:""};
 const ui = {openDone:null, confirmDel:null, busy:false, justDone:null, fresh:new Set(), known:null};
-const forms = { a:{who:"office", due:""}, w:{who:"office", due:""}, o:{who:"office", due:""}, m:{who:"office", due:"", rep:"once", wday:"0"} };
+const forms = { i:{who:"", due:""}, a:{who:"office", due:""}, w:{who:"office", due:""}, o:{who:"office", due:""}, m:{who:"office", due:"", rep:"once", wday:"0"} };
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const DAYS = ["ראשון","שני","שלישי","רביעי","חמישי","שישי","שבת"];
@@ -88,7 +88,7 @@ async function op2(work, okMsg){
 function add2(title, who, due, fields){
   const t = {id: "t" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), title, who, due, fields, by: USER,
     created: new Date().toISOString(), done: false, doneAt: "", proof: [], note: "", s2: true};
-  T2.push(t); return op2(() => put2(t), "נשלח ל" + TO[who]);
+  T2.push(t); return op2(() => put2(t), who === USER ? "נוספה" : "נשלח ל" + TO[who]);
 }
 function done2(id, proof, note){
   const t = t2(id); t.done = true; t.doneAt = new Date().toISOString();
@@ -226,7 +226,7 @@ function shell(){
     <header><h1>שלום ${NAMES[USER]}</h1><div class="counts" id="m-counts"></div></header>
     <form class="panel m-form" id="m-form" autocomplete="off">
       <h2>משימה חדשה</h2>
-      <div class="opt-row"><span class="lbl">למי</span>${chipGroup("m", "who", (SENDS[USER] || ["office", "agent"]).map(w => [w, TO[w]]))}</div>
+      <div class="opt-row"><span class="lbl">למי</span>${chipGroup("m", "who", (SENDS[USER] || ["office", "agent"]).map(w => [w, w === USER ? "לי" : TO[w]]))}</div>
       <textarea id="m-title" rows="2" placeholder="מה צריך לעשות?" maxlength="300"></textarea>
       <div id="m-fields" class="m-form"></div>
       <button type="button" class="addf" id="m-addf">+ שדה למילוי</button>
@@ -248,6 +248,11 @@ function shell(){
   if (view === "inbox") body = `<div class="ag">
     ${brand()}
     <header class="o-head"><div><h1>שלום ${NAMES[USER]}</h1><div class="o-date" id="i-date"></div></div><div class="counts" id="i-counts"></div></header>
+    <form class="quick" id="i-form" autocomplete="off">
+      <input id="i-title" placeholder="משימה חדשה לעצמי" maxlength="300" aria-label="משימה חדשה">
+      <button class="btn pri" type="submit">הוספה</button>
+      <div class="opt-row"><span class="lbl">יעד</span>${dueGroup("i")}</div>
+    </form>
     <main id="i-list" class="group"></main></div>`;
   if (view === "plan") body = `<div class="pl" id="pl"></div>`;
   if (view === "ai") body = `<div class="ai" id="ai"></div>`;
@@ -380,7 +385,7 @@ function recItem(r){
     <span class="m-meta">${esc(freqText(r))}, ${r.who === "agent" ? "לשלומי" : "לניל"}${r.fields.length ? ", " + r.fields.length + " שדות למילוי" : ""}${r.active ? "" : ", מושהית"}</span></div>`;
 }
 function renderMarco(){
-  const targets = SENDS[USER] || ["office", "agent"], own = isStoreWho(USER);
+  const targets = (SENDS[USER] || ["office", "agent"]).filter(w => w !== USER), own = isStoreWho(USER);
   const mine = own ? openOf(USER) : [], others = targets.flatMap(w => openOf(w));
   $("#m-counts").innerHTML = counts([...(own ? [[mine.length, "אצלי"]] : []), [others.length, "אצל אחרים"], [urgent(others).length, "תקועות", "urgent"]]);
   const list = who => { const op = openOf(who), dn = doneOf(who, 7);
@@ -453,7 +458,8 @@ document.addEventListener("input", e => {
 });
 document.addEventListener("submit", async e => {
   e.preventDefault();
-  const f = e.target.id === "o-form" ? "o" : e.target.id === "m-form" ? "m" : e.target.id === "w-form" ? "w" : e.target.id === "a-form" ? "a" : null; if (!f) return;
+  const f = e.target.id === "o-form" ? "o" : e.target.id === "m-form" ? "m" : e.target.id === "w-form" ? "w" : e.target.id === "a-form" ? "a" : e.target.id === "i-form" ? "i" : null; if (!f) return;
+  if (f === "i") forms.i.who = USER;
   const titleEl = $("#" + f + "-title"), title = titleEl.value.trim();
   if (!title){ titleEl.focus(); toast("כתבו קודם מה המשימה", true); return; }
   const fields = f === "m" ? [...document.querySelectorAll("#m-fields input")].map(i => i.value.trim()).filter(Boolean) : [];
