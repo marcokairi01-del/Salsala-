@@ -31,7 +31,7 @@
 // The address of the Google side of סל. The access code is never stored here:
 // it arrives in each person's own link after the "#", and is remembered on that phone.
 var BASE = "https://script.google.com/macros/s/AKfycbzv7Uv21yemebZgZ4WcIbWWElzj_JvVC2NKlHyoOmsTbLdWYxTB_dj4HEoljWw6B7msBw/exec";
-var VIEW = { nil: "office", shlomi: "week", marco: "marco", dudi: "marco" };
+var VIEW = { nil: "office", shlomi: "week", marco: "marco", dudi: "marco", tom: "inbox", roni: "inbox" };
 var q = new URLSearchParams(location.search);
 var person = VIEW[q.get("p")] ? q.get("p") : "";
 var view = q.get("v") || VIEW[person];
